@@ -28,7 +28,7 @@ int get_dependencies(const char* file, int foodule, int dependencies[]) {
 
     fclose(f);
 
-    // after the colon, there will either be a space (if there are some dependencies) or newline (if no dependencies)
+    // after the colon, there will either be a space (if there are some dependencies) or newline/space (if no dependencies)
     if(line[1] < 48 || line[1] > 57) {
         return 0;
     }
@@ -132,6 +132,6 @@ int main(int argc, char* argv[]) {
         }
     }
     printf("\n");
-    
+
     return 0;
 }
