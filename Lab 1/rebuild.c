@@ -9,9 +9,7 @@ const char* dag_file = "foodep.txt";
 const char* visited_file = "done.txt";
 
 // function to retrieve the dependencies of a foodule and return the total number of dependencies
-int get_dependencies(const char* file, int foodule, int dependencies[]) {
-    FILE* f = fopen(file, "r");
-
+int get_dependencies(FILE* f, int foodule, int dependencies[]) {
     // jump to the line that contains the dependencies of the argument foodule
     int cnt = 0;
     while(cnt != foodule) {
@@ -25,8 +23,6 @@ int get_dependencies(const char* file, int foodule, int dependencies[]) {
     char line[MAX_DEP];
     fgets(line, MAX_DEP, f);
     // printf("Line: %s", line);    
-
-    fclose(f);
 
     // after the colon, there will either be a space (if there are some dependencies) or newline/space (if no dependencies)
     if(line[1] < 48 || line[1] > 57) {
@@ -67,11 +63,16 @@ int main(int argc, char* argv[]) {
         fclose(fvf);
     }
 
-    fclose(fdag);
-
     int foodule = atoi(argv[1]);
+
+    if(foodule > total_foodules) {
+        printf("Invalid foodule number\n");
+        exit(0);
+    }
+
     int* dependencies = (int*)malloc(MAX_DEP*sizeof(int));
-    int tot_dep = get_dependencies(dag_file, foodule, dependencies);
+    int tot_dep = get_dependencies(fdag, foodule, dependencies);
+    fclose(fdag);
 
     // tranversing the dependencies of current foodule and rebuilding them
     for(int i=0; i<tot_dep; i++) {
