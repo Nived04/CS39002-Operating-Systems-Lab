@@ -8,6 +8,7 @@ const int MAX_DEP = 500;
 const char* dag_file = "foodep.txt";
 const char* visited_file = "done.txt";
 
+// function to retrieve the dependencies of a foodule and return the total number of dependencies
 int get_dependencies(const char* file, int foodule, int dependencies[]) {
     FILE* f = fopen(file, "r");
 
@@ -60,11 +61,9 @@ int main(int argc, char* argv[]) {
     // if there is just 1 other argument, it means that it is the root process
     if(argc == 2) {
         FILE *fvf = fopen(visited_file, "w");
-        char* vis = (char*)malloc((total_foodules + 1)*sizeof(char));
         for(int i=0; i<total_foodules; i++) {
-            vis[i] = '0';
+            fputc('0', fvf);
         }
-        fputs(vis, fvf);
         fclose(fvf);
     }
 
@@ -74,22 +73,26 @@ int main(int argc, char* argv[]) {
     int* dependencies = (int*)malloc(MAX_DEP*sizeof(int));
     int tot_dep = get_dependencies(dag_file, foodule, dependencies);
 
+    // tranversing the dependencies of current foodule and rebuilding them
     for(int i=0; i<tot_dep; i++) {
         int child = dependencies[i];
         
+        // read the "visited" file to retrieve the isVisited status
         FILE *fvf = fopen(visited_file, "r");
         char line[total_foodules + 1];
         fgets(line, sizeof(line), fvf);
         fclose(fvf);
 
+        // do not fork if the child has already been visited
         if(line[child - 1] == '1') {
             continue;
         }    
         else {
-            int pid = fork();
+            int pid = fork(); // signifies recursion of DFS
             if(pid == 0) {
                 char child_num[10];
                 sprintf(child_num, "%d", child);
+                // calling execlp to create a new process with -child as additional argument that tells that it is not root
                 execlp("./rebuild", "./rebuild", child_num, "-child", NULL);
             }
             else {
@@ -98,16 +101,21 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // retrieve the visited status
     FILE* fvf = fopen(visited_file, "r");
     char line[total_foodules + 1];
     fgets(line, sizeof(line), fvf);
+
+    // update the visited status of the current foodule
     line[foodule - 1] = '1';
     fclose(fvf);
 
+    // write the updated visited status back to the file
     fvf = fopen(visited_file, "w");
     fputs(line, fvf);
     fclose(fvf);
 
+    // print required message
     char buffer[100];
     sprintf(buffer, "foo%d rebuilt", foodule);
     printf("%s", buffer);
@@ -124,5 +132,6 @@ int main(int argc, char* argv[]) {
         }
     }
     printf("\n");
+    
     return 0;
 }
