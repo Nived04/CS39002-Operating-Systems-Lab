@@ -70,7 +70,7 @@ void formattedOutput(int bef) {
 
 // custom signal handler for SIGUSR2: which updates the status of the child to out of the game
 void signalHandler(int sig) {
-    if(sig == SIGUSR1 || sig == SIGUSR2) received_signal = 1;
+    received_signal = 1;
     if(sig == SIGUSR2) child_status[throw_to] = 0;
     return;
 }
@@ -140,9 +140,9 @@ int main(int argc, char* argv[]) {
            the received_signal flag will have been set to 1 and the control will flow 
            without hanging 
         */
-       
+
         if(!received_signal) pause();
-        else received_signal = 0;
+        received_signal = 0;
 
         // fork a dummy child for allowing sequential status printing
         int dpid = fork();
