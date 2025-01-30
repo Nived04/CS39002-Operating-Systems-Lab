@@ -16,8 +16,9 @@ void print_block(int A[3][3]) {
                 printf("| %d ", A[i][j]);
             }
         }
-        printf("|\n+---+---+---+\n");
+        printf("|\n");
     }
+    printf(" +---+---+---+\n");
 }
 
 
@@ -52,11 +53,11 @@ bool neighbor_conflict(char type, int loc, int n1, int n2, int b, int d) {
     pass_message(pass, n1);
     int response;
     scanf("%d", &response);
-    if(response == 0) return false;
+    if(response == 0) return true;
     pass_message(pass, n2);
     scanf("%d", &response);
-    if(response == 0) return false;
-    return true;
+    if(response == 0) return true;
+    return false;
 }
 
 void put_digit(int A[3][3], int B[3][3]) {
@@ -64,22 +65,26 @@ void put_digit(int A[3][3], int B[3][3]) {
     scanf("%d %d", &c, &d);
     if(A[c/3][c%3] != 0) {
         // print_block(B);
-        printf("Read-only Cell");
+        printf("Read-only Cell\n");
+        fflush(NULL);
         sleep(3);
         return;
     }
     if(block_conflict(B, d)) {
-        printf("Block conflict");
+        printf("Block conflict\n");
+        fflush(NULL);
         sleep(3);
         return;
     }
     if(neighbor_conflict('r', c/3, rn1fdout, rn2fdout, bfdout, d)) {
-        printf("Row conflict");
+        printf("Row conflict\n");
+        fflush(NULL);
         sleep(3);
         return;
     }
     if(neighbor_conflict('c', c%3, cn1fdout, cn2fdout, bfdout, d)) {
-        printf("Column conflict");
+        printf("Column conflict\n");
+        fflush(NULL);
         sleep(3);
         return;
     }
@@ -131,7 +136,7 @@ int main(int argc, char* argv[]) {
 
     dup(bfdin);
 
-    printf("Block %d ready", blockno);
+    printf("Block %d ready\n", blockno);
     int A[3][3], B[3][3];
     while(1) {
         char c;

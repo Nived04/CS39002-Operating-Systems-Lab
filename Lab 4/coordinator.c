@@ -53,7 +53,7 @@ void pass_message(char* message, int write_end) {
     int stdout_copy = dup(1);
     close(1);
     dup(write_end);
-    printf("%s", message);
+    printf("%s\n", message);
     close(1);
     dup(stdout_copy);
 }
@@ -100,7 +100,7 @@ int main() {
             sprintf(cn1fdout, "%d", neighbors[i][2]);
             sprintf(cn2fdout, "%d", neighbors[i][3]);
 
-            int x = 700 + (i%3)*275, y = 100 + (i/3)*275;
+            int x = 700 + (i%3)*300, y = 100 + (i/3)*300;
             sprintf(geometry, "17x8+%d+%d", x, y);
             execlp("xterm", "xterm", "-T", title, "-fa", "Monospace", "-fs", "15", "-geometry", geometry, "-bg", "#331100",
             "-e" ,"./block", blockno, bfdin, bfdout, rn1fdout, rn2fdout, cn1fdout, cn2fdout, NULL);
