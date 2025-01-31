@@ -3,13 +3,20 @@
 #include <unistd.h>
 #include <stdbool.h>
 
-int stdout_copy;
+#define loop(i, n) for(int i=0; i<n; i++)
+
+// variables for the blocks (initial and current)
+int A[3][3], B[3][3];
+
+// variables for read and write end of pipe with coordinator
+// and write end of pipes with neighbors
 int blockno, bfdin, bfdout, rn1fdout, rn2fdout, cn1fdout, cn2fdout;
 
+// function to print the block in the given format
 void print_block(int A[3][3]) {
-    for(int i=0; i<3; i++) {
+    loop(i, 3) {
         printf(" +---+---+---+\n ");
-        for(int j=0; j<3; j++) {
+        loop(j, 3) {
             if(A[i][j] == 0) {
                 printf("|   ");
             } else {
@@ -21,18 +28,19 @@ void print_block(int A[3][3]) {
     printf(" +---+---+---+\n");
 }
 
-
-void initialize_block(int A[3][3], int B[3][3]) {
-    for(int i=0; i<3; i++) {
-        for(int j=0; j<3; j++) {
+// function to fill the block with the digits sent by the coordinator
+void fill_block() {
+    loop(i, 3) {
+        loop(j, 3) {
             scanf("%d", &A[i][j]);
             B[i][j] = A[i][j];
         }
     }
-    print_block(B);
 }
 
+// function to pass the message via the write end of the required block's pipe
 void pass_message(char* message, int write_end) {
+    int stdout_copy = dup(1);
     close(1);
     dup(write_end);
     printf("%s\n", message);
@@ -40,88 +48,83 @@ void pass_message(char* message, int write_end) {
     dup(stdout_copy);
 }
 
-bool block_conflict(int B[3][3], int d) {
-    for(int i=0; i<9; i++) {
-        if(B[i/3][i%3] == d) return true;
+// function to check if the digit d is already present in the block (ignore if 0)
+bool block_conflict(int d) {
+    loop(i, 9) {
+        if(d!=0 && B[i/3][i%3] == d) return true;
     }
     return false;
 }
 
-bool neighbor_conflict(char type, int loc, int n1, int n2, int b, int d) {
+// pass the location and the digit to the neighbors and get the conflict response
+bool neighbor_conflict(char type, int loc, int n1, int n2, int d) {
     char pass[10]; 
-    sprintf(pass, "%c %d %d %d", type, loc, d, b);
+    int response[2];
+
+    sprintf(pass, "%c %d %d %d", type, loc, d, bfdout);
     pass_message(pass, n1);
-    int response;
-    scanf("%d", &response);
-    if(response == 0) return true;
+    
+    scanf("%d", &response[0]);
+    // if the response is 0, then there is a conflict
+    if(response[0] == 0) return true;
+    
     pass_message(pass, n2);
-    scanf("%d", &response);
-    if(response == 0) return true;
+    scanf("%d", &response[1]);
+    
+    if(response[1] == 0) return true;
     return false;
 }
 
-void put_digit(int A[3][3], int B[3][3]) {
+// function to put the digit d at the cell c of the block
+void put_digit() {
     int c, d;
     scanf("%d %d", &c, &d);
+    // if the cell is read-only, then give read-only conflict
     if(A[c/3][c%3] != 0) {
-        // print_block(B);
         printf("Read-only Cell\n");
-        fflush(NULL);
-        sleep(3);
+        sleep(2);
         return;
     }
-    if(block_conflict(B, d)) {
-        printf("Block conflict\n");
-        fflush(NULL);
-        sleep(3);
-        return;
+    // if the digit is not an empty space (or 0) check other conflicts
+    if(d != 0)  {
+        if(block_conflict(d)) {
+            printf("Block conflict\n");
+            sleep(2);
+            return;
+        }
+        if(neighbor_conflict('r', c/3, rn1fdout, rn2fdout, d)) {
+            printf("Row conflict\n");
+            sleep(2);
+            return;
+        }
+        if(neighbor_conflict('c', c%3, cn1fdout, cn2fdout, d)) {
+            printf("Column conflict\n");
+            sleep(2);
+            return;
+        }
     }
-    if(neighbor_conflict('r', c/3, rn1fdout, rn2fdout, bfdout, d)) {
-        printf("Row conflict\n");
-        fflush(NULL);
-        sleep(3);
-        return;
-    }
-    if(neighbor_conflict('c', c%3, cn1fdout, cn2fdout, bfdout, d)) {
-        printf("Column conflict\n");
-        fflush(NULL);
-        sleep(3);
-        return;
-    }
+    // fill if no conflict or if the digit is 0 and not read-only cell
     B[c/3][c%3] = d;
-    print_block(B);
 }
 
-void check_block(char type, int B[3][3]) {
+// check the row or the column of the block for the digit d sent by the neighbor
+void check_block_locationally(char type) {
     int loc, d, req_block_write; 
     scanf("%d %d %d", &loc, &d, &req_block_write);
     char response[5];
     int resp = 1;
-    for(int i=0; i<3; i++) {
-        if(type == 'r') {
-            if(B[loc][i] == d) resp = 0;
-        }
-        else {
-            if(B[i][loc] == d) resp = 0;
+    loop(i, 3) {
+        if(d != 0) {
+            if(type == 'r' && B[loc][i] == d) resp = 0;
+            if(type == 'c' && B[i][loc] == d) resp = 0;
         }
     }
+
     sprintf(response, "%d", resp); 
     pass_message(response, req_block_write);   
 } 
 
-void print_solution() {
-    int temp[3][3];
-    for(int i=0; i<3; i++) {
-        for(int j=0; j<3; j++) {
-            scanf("%d", &temp[i][j]);
-        }
-    }
-    print_block(temp);
-}
-
 int main(int argc, char* argv[]) {
-    stdout_copy = dup(1);
-
     // permanently close the stdin file descriptor
     close(0);
 
@@ -137,33 +140,33 @@ int main(int argc, char* argv[]) {
     dup(bfdin);
 
     printf("Block %d ready\n", blockno);
-    int A[3][3], B[3][3];
+
     while(1) {
         char c;
-        scanf("%c", &c);
+        scanf(" %c", &c);
         switch(c) {
-        case 'n':
-            initialize_block(A, B);
-            break;
-        case 'p':
-            put_digit(A, B);
-            break;
-        case 'r':
-            check_block('r', B);
-            break;
-        case 'c':
-            check_block('c', B);
-            break;
-        case 's':
-            print_solution();
-            break;       
-        case 'q':
-            printf("Bye...");
-            sleep(3);
-            exit(0);
-            break;
-        default:
-            break;
+            case 'n':
+                fill_block();
+                break;
+            case 'p':
+                put_digit();
+                break;
+            case 'r':
+                check_block_locationally('r');
+                break;
+            case 'c':
+                check_block_locationally('c');
+                break;      
+            case 'q':
+                printf("Bye...\n");
+                sleep(2);
+                exit(0);
+            default:
+                break;
         }
+        // print the current state of the block after every command
+        print_block(B);
     }
+
+    return 0;
 }
