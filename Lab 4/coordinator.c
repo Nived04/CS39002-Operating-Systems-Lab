@@ -83,6 +83,10 @@ void pass_block_digits(int A[9][9], int no) {
 void put_digit() {
     int b, c, d;
     scanf("%d %d %d", &b, &c, &d);
+    if(b<0 || b>8 || c<0 || c>8 || d<1 || d>9) {
+        printf("Invalid block, cell or digit\n");
+        return;
+    }
     char message[20];
     sprintf(message, "p %d %d", c, d);
     pass_message(message, fds[b][1]);
