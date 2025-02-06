@@ -8,7 +8,8 @@ Return value: -1 for errors, 0 to the new process, and process ID of the new pro
 ```Use of fflush(stdout):
 The child and the parent processes print text so fast to the std output that the buffer actually collects 
 all the text and displays it together. To prevent this from happening and letting printf print exactly when it
-is called, it is important to use fflush(stdout), because it will clear the buffer every time```
+is called, it is important to use fflush(stdout), because it will clear the buffer every time
+```
 
 ### wait():
 A function that tells a process to stop execution until one of its child processes exits.
