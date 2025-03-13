@@ -7,6 +7,7 @@
 #define msleep(x) usleep(x*100000)
 
 int remaining_visitors;
+int done = 0;
 
 pthread_mutex_t bmtx;
 pthread_barrier_t EOS;
@@ -53,6 +54,8 @@ void *boat_thread(void * args) {
 
     
     while(1) {
+        down(&boat);
+
         pthread_mutex_lock(&bmtx);
             BA[boat_id] = 1;
             BC[boat_id] = -1;
@@ -61,7 +64,6 @@ void *boat_thread(void * args) {
 
         up(&rider);
 
-        down(&boat);
 
         pthread_barrier_wait(&BB[boat_id]);
 
@@ -78,7 +80,13 @@ void *boat_thread(void * args) {
         pthread_mutex_lock(&bmtx);
             remaining_visitors--;
             if(remaining_visitors == 0) {
+                // done = 1;
                 pthread_mutex_unlock(&bmtx);
+
+                // for(int i=0; i<m; i++) {
+                //     up(&boat);
+                // }
+
                 pthread_barrier_wait(&EOS);
                 break;
             }
@@ -175,24 +183,33 @@ int main(int argc, char* argv[]) {
 
         usleep(5000);
     }
-
+    
     pthread_barrier_wait(&EOS);
 
     for(int i=0; i<m; i++) {
-        pthread_join(tboat[i], NULL);
+        pthread_cancel(tboat[i]);
     }
-
+    
     for(int i=0; i<n; i++) {
-        pthread_join(tvisitor[i], NULL);
+        pthread_cancel(tvisitor[i]);
+    }
+    
+    for(int i=0; i<m; i++) {
+        pthread_barrier_destroy(&BB[i]);
     }
 
-    pthread_barrier_destroy(&EOS);
     pthread_mutex_destroy(&bmtx);
-
+    pthread_mutex_destroy(&boat.mtx);
+    pthread_mutex_destroy(&rider.mtx);
+    pthread_cond_destroy(&boat.cv);
+    pthread_cond_destroy(&rider.cv);
+    
     free(BA);
     free(BC);
     free(BT);
     free(BB);
 
+    pthread_barrier_destroy(&EOS);
+    
     return 0;
 }
