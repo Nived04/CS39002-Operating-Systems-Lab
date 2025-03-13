@@ -5,3 +5,4 @@ rebuild
 done.txt
 foodep.txt
 *.zip
+*.out
