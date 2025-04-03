@@ -1,6 +1,7 @@
 #include <iostream> 
 #include <vector>
 #include <fstream>
+#include <queue>
 #include <deque>
 
 using namespace std;
@@ -57,7 +58,7 @@ public:
         NFF = MAX_USER_FRAMES;
     }
 
-    void replace_page(int pid, page_details victim, int req = -1) {
+    u_s_int replace_page(int pid, page_details victim, int req = -1) {
         if(pid == -1) {
             return;
         }
@@ -69,7 +70,7 @@ public:
 			if((it->last_pid == pid) && (it->last_page_no == req)) {
 				FFLIST.erase(it);
 				FFLIST.push_back({victim.frame_no, victim.pid, victim.page_no});
-				return;
+				return it->frame_number;
 			}
 		}
 
@@ -80,7 +81,7 @@ public:
 			if(it->last_pid == -1) {
 				FFLIST.erase(it);
                 FFLIST.push_back({victim.frame_no, victim.pid, victim.page_no});
-				return;
+				return it->frame_number;
 			}
 		}
 
@@ -91,7 +92,7 @@ public:
 			if(it->last_pid == pid) {
 				FFLIST.erase(it);
                 FFLIST.push_back({victim.frame_no, victim.pid, victim.page_no});
-				return;
+				return it->frame_number;
 			}
 		}
 
@@ -101,7 +102,7 @@ public:
 
 		FFLIST.push_back({victim.frame_no, victim.pid, victim.page_no});
 
-		return;
+		return random_frame;
     }
 
     u_s_int get_free_frame(int pid = -1) {
@@ -110,6 +111,11 @@ public:
         NFF--;
 
         return frame_no;
+    }
+
+    void add_frame_back(u_s_int frame_no) {
+        FFLIST.push_back({frame_no, -1, -1});
+        NFF++;
     }
 };
 
@@ -166,7 +172,12 @@ public:
 
         if(NFF == NFFMIN) {
             page_details q = get_victim_page();
-            mmu.replace_page(this->pid, q, p);
+            page_table[q.page_no].frame &= ((1<<15) - 1);
+            page_table[p].frame = (mmu.replace_page(this->pid, q, p)) | (1<<15);
+            page_table[p].counter = 0xffff;
+        }
+        else {
+            page_table[p].frame = mmu.get_free_frame(this->pid) | (1<<15);
         }
     }
     
@@ -186,12 +197,60 @@ public:
     
             if(allocate_frame(pid, mid) < 0)
                 return -1;
+
+            page_table[10 + (mid>>10)].counter = 0xffff;
+            page_table[10 + (mid>>10)].frame = page_table[10 + (mid>>10)].frame | (1<<14); // set the reference bit to 1
         }
-    
+
+        for(int i=ESSENTIAL_FRAMES; i<MAX_PROCESS_PAGES; i++) {
+            if(page_table[i].frame>>15 & 1) {
+                page_table[i].counter = (page_table[i].counter>>1);
+                
+                if(page_table[i].frame>>14 & 1) {
+                    page_table[i].counter |= (1<<15);
+                }
+            }
+            // set reference bit of all pages to 0
+            page_table[i].frame &= ((1<<14) - 1);
+            page_table[i].frame |= (1<<15);
+        }
+        
         curr_search[pid]++;
         return 0;
     }
+
+    void remove_frames() {
+        for(int i=ESSENTIAL_FRAMES; i<MAX_PROCESS_PAGES; i++) {
+            if(page_table[i].frame>>15 & 1) {
+                page_table[i].frame &= ((1<<15) - 1);
+                mmu.add_frame_back(page_table[i].frame);
+            }
+        }
+    }
 };
+
+queue<int> rr_queue;
+
+void simulate_page_replacement(process* processes, int num_processes, vector<vector<int> >& search_indices, vector<int>& process_array_size, vector<int>& curr_search) {
+    while(!rr_queue.empty()) {
+        int pid = rr_queue.front();
+        rr_queue.pop();
+
+        int search_index = search_indices[pid][curr_search[pid]];
+        int array_size = process_array_size[pid];
+
+        if(processes[pid].bin_search(0, array_size-1, search_index, curr_search, pid) < 0) {
+            continue;
+        }
+
+        if(curr_search[pid] == num_searches) {
+            processes[pid].remove_frames();
+        }
+        else {
+            rr_queue.push(pid);
+        }
+    }
+}
 
 int main() {
     ifstream search_file("search.txt");
@@ -212,6 +271,9 @@ int main() {
     process* processes = new process[num_processes];    
     for(int i = 0; i < num_processes; i++) {
            processes[i] = process(i, process_array_size[i], search_indices[i]);
-    }
+           rr_queue.push(i);
+    }  
+
+    simulate_page_replacement(processes, num_processes, search_indices, process_array_size, curr_search);
 
 }
