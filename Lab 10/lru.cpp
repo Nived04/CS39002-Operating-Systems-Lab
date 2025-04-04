@@ -18,14 +18,17 @@ int NFF = 0;
 int num_processes, num_searches;
 
 // variables to track statistics
-int total_page_faults = 0, total_page_accesses = 0, deg_of_multiprog;
+int total_page_faults = 0, total_page_accesses = 0, deg_of_multiprog, total_page_replacements = 0;
+int total_attempts[4] = {0, 0, 0, 0};
 
+// frame structure
 typedef struct {
     u_s_int frame_number;
     int last_pid;
     int last_page_no;
 }frame;
 
+// page entry structure
 struct page_entry {
     u_s_int frame;
     u_s_int counter;
@@ -36,6 +39,7 @@ struct page_entry {
     }
 };
 
+// utility structure to hold page details (used for getting victim page details)
 struct page_details {
 	int pid;
 	int page_no;
@@ -46,6 +50,7 @@ struct page_details {
 typedef struct page_entry page_entry;
 typedef struct page_details page_details;
 
+// singleton class for main memory unit
 class main_memory_unit {
 private:
     deque<frame> FFLIST;
@@ -76,12 +81,13 @@ public:
        	for(auto it = FFLIST.begin(); it != FFLIST.end(); it++) {
 			if((it->last_pid == pid) && (it->last_page_no == req)) {
                 u_s_int frame_no = it->frame_number;
-				FFLIST.erase(it);
-				FFLIST.push_back({victim.frame_no, victim.pid, victim.page_no});
                 #ifdef VERBOSE
                     cout << "\t\tAttempt 1: Page found in free frame " << frame_no << endl;
                 #endif
+				FFLIST.erase(it);
+				FFLIST.push_back({victim.frame_no, victim.pid, victim.page_no});
                 arr[0]++;
+                total_attempts[0]++;
 				return frame_no;
 			}
 		}
@@ -92,12 +98,13 @@ public:
 		for(auto it = FFLIST.rbegin(); it != FFLIST.rend(); it++) {
 			if(it->last_pid == -1) {
                 u_s_int frame_no = it->frame_number;
-				FFLIST.erase(prev(it.base()));
-                FFLIST.push_back({victim.frame_no, victim.pid, victim.page_no});
                 #ifdef VERBOSE
                     cout << "\t\tAttempt 2: Free frame " << frame_no << " owned by no process found" << endl;
                 #endif
+				FFLIST.erase(prev(it.base()));
+                FFLIST.push_back({victim.frame_no, victim.pid, victim.page_no});
                 arr[1]++;
+                total_attempts[1]++;
 				return frame_no;
 			}
 		}
@@ -114,6 +121,7 @@ public:
 				FFLIST.erase(prev(it.base()));
                 FFLIST.push_back({victim.frame_no, victim.pid, victim.page_no});
                 arr[2]++;
+                total_attempts[2]++;
 				return frame_no;
 			}
 		}
@@ -125,13 +133,15 @@ public:
         #ifdef VERBOSE
             cout << "\t\tAttempt 4: Free frame " << frame_no << " owned by Process " << FFLIST[random_frame].last_pid << " chosen" << endl;
         #endif
+        
 		FFLIST.erase(FFLIST.begin() + random_frame);
-
 		FFLIST.push_back({victim.frame_no, victim.pid, victim.page_no});
         arr[3]++;
+        total_attempts[3]++;
 		return frame_no;
     }
 
+    // get the first free frame: the front of the array (deque)
     u_s_int get_free_frame() {
         u_s_int frame_no = FFLIST.front().frame_number;
         FFLIST.pop_front();
@@ -140,6 +150,7 @@ public:
         return frame_no;
     }
 
+    // add a frame back to the free frame list
     void add_frame_back(u_s_int frame_no) {
         FFLIST.push_back({frame_no, -1, -1});
         NFF++;
@@ -148,6 +159,12 @@ public:
 
 main_memory_unit* main_memory_unit::instance = nullptr;
 
+/*
+process class;
+
+each process stores its page_table and interacts with the MMU for frame management
+each process tracks its own page faults, accesses, and replacements
+*/
 class process {
     int pid;
     int array_size;
@@ -158,6 +175,7 @@ class process {
     main_memory_unit* mmu;
 
 public:
+    // public variables for allowing interface to retreive statistics
     int accesses;
     int page_faults;
     int page_replacements;
@@ -192,10 +210,9 @@ public:
     }
 
     page_details get_victim_page() {
-        // u_s_int min_cnt = 0xffff;
         int min_index = -1;
         for(int i = ESSENTIAL_FRAMES; i < MAX_PROCESS_PAGES; i++) {
-            // victim page is a page with min history and valid bit = 1
+            // victim page must be valid
             if((page_table[i].frame>>15 & 1)) {
                 if(min_index == -1) {
                     min_index = i;
@@ -207,32 +224,40 @@ public:
         }
         u_s_int min_frame = page_table[min_index].frame & ((1<<14) - 1);
 
+        // return the victim page details
         return {this->pid, min_index, min_frame, page_table[min_index].counter};
     }
     
+    // allocate a frame for the page
     int allocate_frame(int index) {
         int p = 10 + (index>>10);
 
+        // if valid, can directly use that frame
         if((page_table[p].frame>>15) & 1) {
             return 0;
         }
 
+        // else it is a page fault
         total_page_faults++;
         this->page_faults++;
 
+        // if free frame decreases to threshold, need to call for page replacement
         if(NFF <= NFFMIN) {
             this->page_replacements++;
+            total_page_replacements++;
+
             page_details q = get_victim_page();
             // update q's page table
             page_table[q.page_no].frame &= ((1<<14) - 1);
+
             // update p's page table
             page_table[p].frame = (mmu->replace_page(this->pid, q, p, this->attempts));
 
             #ifdef VERBOSE
                 cout << "\tFault on Page " << setw(4) << p << ": To replace Page " << q.page_no << " at Frame " << q.frame_no << " [history = " << q.counter << "]" << endl;
             #endif
-
         }
+        // otherwise just allocate a fresh free frame
         else {
             page_table[p].frame = mmu->get_free_frame();
 
@@ -241,6 +266,7 @@ public:
             #endif
         }
 
+        // update history to be maximum
         page_table[p].counter = 0xffff;
         return 0;
         
@@ -266,11 +292,13 @@ public:
             
             allocate_frame(mid);
             
-            page_table[10+(mid>>10)].frame |= (3<<14); // set the reference and valid bit to 1
+            // set the reference and valid bit to 1
+            page_table[10+(mid>>10)].frame |= (3<<14); 
         }
 
         for(int i=ESSENTIAL_FRAMES; i<MAX_PROCESS_PAGES; i++) {
             if((page_table[i].frame>>15) & 1) {
+                // decrement history value by right shifting once
                 page_table[i].counter = (page_table[i].counter>>1);
                 
                 if((page_table[i].frame>>14) & 1) {
@@ -291,6 +319,7 @@ public:
         return 1;
     }
 
+    // remove all frames from the page table when the process ends
     void remove_frames() {
         for(int i=0; i<MAX_PROCESS_PAGES; i++) {
             if(page_table[i].frame>>15 & 1) {
@@ -303,6 +332,7 @@ public:
 
 queue<int> rr_queue;
 
+// round robin queue for process scheduling
 void simulate_page_replacement(process* processes, int num_processes) {
     while(!rr_queue.empty()) {
         int pid = rr_queue.front();
@@ -314,6 +344,20 @@ void simulate_page_replacement(process* processes, int num_processes) {
             rr_queue.push(pid);
         }
     }
+}
+
+void print_stat_values(int a, int b, int c, const int arr[]) {
+    cout << setw(13) << a << setw(7) << b << " (" << fixed << setprecision(2) 
+        << (b * 100.0 / a) << "%) " 
+        << setw(7) << c << " (" << fixed << setprecision(2) 
+        << (c * 100.0 / a) << "%) " 
+        << setw(7) << arr[0] << " + " << setw(3) << arr[1] << " + " 
+        << setw(3) << arr[2] << " + " << setw(3) << arr[3] << "  (" 
+        << fixed << setprecision(2) << (arr[0] * 100.0 / c) << "% + " 
+        << fixed << setprecision(2) << (arr[1] * 100.0 / c) << "% + " 
+        << fixed << setprecision(2) << (arr[2] * 100.0 / c) << "% + " 
+        << fixed << setprecision(2) << (arr[3] * 100.0 / c) << "%)" 
+        << endl;
 }
 
 int main() {
@@ -338,44 +382,16 @@ int main() {
 
     simulate_page_replacement(processes, num_processes);
 
-    int total_replacements = 0, total_attempts[4] = {0, 0, 0, 0};
-
 	cout << "+++ Page access summary" << endl;
 	cout << "\tPID     Accesses        Faults         Replacements                        Attempts" << endl;
 	for(int i=0; i<num_processes; i++) {
-        cout << "\t" << setw(3) << i << setw(13) << processes[i].accesses  
-            << setw(7) << processes[i].page_faults << " (" << fixed << setprecision(2) 
-            << (processes[i].page_faults * 100.0 / processes[i].accesses) << "%) " 
-            << setw(7) << processes[i].page_replacements << " (" << fixed << setprecision(2) 
-            << (processes[i].page_replacements * 100.0 / processes[i].accesses) << "%) " 
-            << setw(7) << processes[i].attempts[0] << " + " << setw(3) << processes[i].attempts[1] << " + " 
-            << setw(3) << processes[i].attempts[2] << " + " << setw(3) << processes[i].attempts[3] << "  (" 
-            << fixed << setprecision(2) << (processes[i].attempts[0] * 100.0 / processes[i].page_replacements) << "% + " 
-            << fixed << setprecision(2) << (processes[i].attempts[1] * 100.0 / processes[i].page_replacements) << "% + " 
-            << fixed << setprecision(2) << (processes[i].attempts[2] * 100.0 / processes[i].page_replacements) << "% + " 
-            << fixed << setprecision(2) << (processes[i].attempts[3] * 100.0 / processes[i].page_replacements) << "%)" 
-            << endl;
-        
-        total_replacements += processes[i].page_replacements;
-        total_attempts[0] += processes[i].attempts[0];
-        total_attempts[1] += processes[i].attempts[1];
-        total_attempts[2] += processes[i].attempts[2];
-        total_attempts[3] += processes[i].attempts[3];
+        cout << "\t" << setw(3) << i;
+        print_stat_values(processes[i].accesses, processes[i].page_faults, processes[i].page_replacements, processes[i].attempts);
     }
 
     cout << endl;
 
-    cout << "\tTotal" << setw(13) << total_page_accesses 
-        << setw(7) << total_page_faults << " (" << fixed << setprecision(2) 
-        << (total_page_faults * 100.0 / total_page_accesses) << "%) " 
-        << setw(7) << total_replacements << " (" << fixed << setprecision(2) 
-        << (total_replacements * 100.0 / total_page_accesses) << "%) " 
-        << setw(7) << total_attempts[0] << " + " << setw(3) << total_attempts[1] << " + " 
-        << setw(3) << total_attempts[2] << " + " << setw(3) << total_attempts[3] << "  (" 
-        << fixed << setprecision(2) << (total_attempts[0] * 100.0 / total_replacements) << "% + " 
-        << fixed << setprecision(2) << (total_attempts[1] * 100.0 / total_replacements) << "% + " 
-        << fixed << setprecision(2) << (total_attempts[2] * 100.0 / total_replacements) << "% + " 
-        << fixed << setprecision(2) << (total_attempts[3] * 100.0 / total_replacements) << "%)" 
-        << endl;
+    cout << "\tTotal"; 
+    print_stat_values(total_page_accesses, total_page_faults, total_page_replacements, total_attempts);
 
 }
