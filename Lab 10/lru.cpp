@@ -132,7 +132,7 @@ public:
 		return frame_no;
     }
 
-    u_s_int get_free_frame(int pid = -1) {
+    u_s_int get_free_frame() {
         u_s_int frame_no = FFLIST.front().frame_number;
         FFLIST.pop_front();
         NFF--;
@@ -152,6 +152,7 @@ class process {
     int pid;
     int array_size;
     int num_searches;
+    int curr_search;
     vector<int> search_indices;
     vector<page_entry> page_table;
     main_memory_unit* mmu;
@@ -171,6 +172,7 @@ public:
         this->search_indices = search_indices;
         this->num_searches = search_indices.size();
         this->page_table.resize(MAX_PROCESS_PAGES, page_entry());
+        this->curr_search = 0;
 
         this->accesses = 0;
         this->page_faults = 0;
@@ -179,10 +181,10 @@ public:
             this->attempts[i] = 0;
         }
 
-        this->allocate_essential_frames(this->pid);
+        this->allocate_essential_frames();
     }
 
-    void allocate_essential_frames(int pid) {
+    void allocate_essential_frames() {
         for(int i = 0; i < ESSENTIAL_FRAMES; i++) {
             page_table[i].frame = mmu->get_free_frame();
             page_table[i].counter = 0xffff;
@@ -190,13 +192,17 @@ public:
     }
 
     page_details get_victim_page() {
-        u_s_int min_cnt = 0xffff;
+        // u_s_int min_cnt = 0xffff;
         int min_index = -1;
         for(int i = ESSENTIAL_FRAMES; i < MAX_PROCESS_PAGES; i++) {
             // victim page is a page with min history and valid bit = 1
-            if((page_table[i].counter <= min_cnt) && (page_table[i].frame>>15 & 1)) {
-                min_cnt = page_table[i].counter;
-                min_index = i;
+            if((page_table[i].frame>>15 & 1)) {
+                if(min_index == -1) {
+                    min_index = i;
+                }
+                else if(page_table[i].counter < page_table[min_index].counter) {
+                    min_index = i;
+                }
             }
         }
         u_s_int min_frame = page_table[min_index].frame & ((1<<14) - 1);
@@ -228,7 +234,7 @@ public:
 
         }
         else {
-            page_table[p].frame = mmu->get_free_frame(this->pid);
+            page_table[p].frame = mmu->get_free_frame();
 
             #ifdef VERBOSE
                 cout << "\tFault on Page " << setw(4) << p << ": Free frame " << (page_table[p].frame & ((1<<14) - 1)) << " found" << endl;
@@ -237,29 +243,30 @@ public:
 
         page_table[p].counter = 0xffff;
         return 0;
-
+        
     }
     
-    int bin_search(int x, vector<int>& curr_search, int pid) {
+    bool bin_search() {
         #ifdef VERBOSE
-            cout << "+++ Process " << pid << ": Search " << curr_search[pid] + 1 << endl; 
+        cout << "+++ Process " << pid << ": Search " << curr_search + 1 << endl; 
         #endif  
         
         int l = 0, r = array_size - 1;
-
+        int x = search_indices[curr_search];
+        
         while(l<r) {
             int mid = (r+l)/2;
             total_page_accesses++;
             this->accesses++;
-    
+            
             if(mid < x) 
-                l = mid + 1;
+            l = mid + 1;
             else 
-                r = mid;
-    
+            r = mid;
+            
             allocate_frame(mid);
-
-            page_table[10 + (mid>>10)].frame |= (3<<14); // set the reference and valid bit to 1
+            
+            page_table[10+(mid>>10)].frame |= (3<<14); // set the reference and valid bit to 1
         }
 
         for(int i=ESSENTIAL_FRAMES; i<MAX_PROCESS_PAGES; i++) {
@@ -274,8 +281,14 @@ public:
             page_table[i].frame &= (~(u_s_int)(1<<14));
         }
         
-        curr_search[pid]++;
-        return 0;
+        curr_search++;
+
+        if(curr_search == num_searches) {
+            remove_frames();
+            return 0;
+        }
+
+        return 1;
     }
 
     void remove_frames() {
@@ -290,20 +303,14 @@ public:
 
 queue<int> rr_queue;
 
-void simulate_page_replacement(process* processes, int num_processes, vector<vector<int> >& search_indices, vector<int>& process_array_size, vector<int>& curr_search) {
+void simulate_page_replacement(process* processes, int num_processes) {
     while(!rr_queue.empty()) {
         int pid = rr_queue.front();
         rr_queue.pop();
 
-        int search_index = search_indices[pid][curr_search[pid]];
-        int array_size = process_array_size[pid];
+        int ret = processes[pid].bin_search();
 
-        processes[pid].bin_search(search_index, curr_search, pid);
-
-        if(curr_search[pid] == num_searches) {
-            processes[pid].remove_frames();
-        }
-        else {
+        if(ret) {
             rr_queue.push(pid);
         }
     }
@@ -314,7 +321,7 @@ int main() {
     search_file >> num_processes >> num_searches;
     
     vector<vector<int> > search_indices(num_processes, vector<int>(num_searches));
-    vector<int> process_array_size(num_processes), curr_search(num_processes, 0);
+    vector<int> process_array_size(num_processes);
 
     for (int i = 0; i < num_processes; i++) {
         search_file >> process_array_size[i];
@@ -329,7 +336,7 @@ int main() {
            rr_queue.push(i);
     }  
 
-    simulate_page_replacement(processes, num_processes, search_indices, process_array_size, curr_search);
+    simulate_page_replacement(processes, num_processes);
 
     int total_replacements = 0, total_attempts[4] = {0, 0, 0, 0};
 
