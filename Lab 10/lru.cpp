@@ -75,44 +75,59 @@ public:
 		*/
        	for(auto it = FFLIST.begin(); it != FFLIST.end(); it++) {
 			if((it->last_pid == pid) && (it->last_page_no == req)) {
+                u_s_int frame_no = it->frame_number;
 				FFLIST.erase(it);
 				FFLIST.push_back({victim.frame_no, victim.pid, victim.page_no});
+                #ifdef VERBOSE
+                    cout << "\t\tAttempt 1: Page found in free frame " << frame_no << endl;
+                #endif
                 arr[0]++;
-				return it->frame_number;
+				return frame_no;
 			}
 		}
 
 		/*
 		Check 2: check if there is a free frame with no owner. if so, use it
 		*/
-		for(auto it = FFLIST.begin(); it != FFLIST.end(); it++) {
+		for(auto it = FFLIST.rbegin(); it != FFLIST.rend(); it++) {
 			if(it->last_pid == -1) {
-				FFLIST.erase(it);
+                u_s_int frame_no = it->frame_number;
+				FFLIST.erase(prev(it.base()));
                 FFLIST.push_back({victim.frame_no, victim.pid, victim.page_no});
+                #ifdef VERBOSE
+                    cout << "\t\tAttempt 2: Free frame " << frame_no << " owned by no process found" << endl;
+                #endif
                 arr[1]++;
-				return it->frame_number;
+				return frame_no;
 			}
 		}
 
 		/*
 		Check 3: find a free frame with last owner i and use it for new page p.
 		*/
-		for(auto it = FFLIST.begin(); it != FFLIST.end(); it++) {
+		for(auto it = FFLIST.rbegin(); it != FFLIST.rend(); it++) {
 			if(it->last_pid == pid) {
-				FFLIST.erase(it);
+                u_s_int frame_no = it->frame_number;
+                #ifdef VERBOSE
+                    cout << "\t\tAttempt 3: Own page " << it->last_page_no << " found in free frame " << frame_no << endl;
+                #endif
+				FFLIST.erase(prev(it.base()));
                 FFLIST.push_back({victim.frame_no, victim.pid, victim.page_no});
                 arr[2]++;
-				return it->frame_number;
+				return frame_no;
 			}
 		}
 
 		
 		u_s_int random_frame = rand() % FFLIST.size();
         u_s_int frame_no = FFLIST[random_frame].frame_number;
+
+        #ifdef VERBOSE
+            cout << "\t\tAttempt 4: Free frame " << frame_no << " owned by Process " << FFLIST[random_frame].last_pid << " chosen" << endl;
+        #endif
 		FFLIST.erase(FFLIST.begin() + random_frame);
 
 		FFLIST.push_back({victim.frame_no, victim.pid, victim.page_no});
-
         arr[3]++;
 		return frame_no;
     }
@@ -179,7 +194,7 @@ public:
         int min_index = -1;
         for(int i = ESSENTIAL_FRAMES; i < MAX_PROCESS_PAGES; i++) {
             // victim page is a page with min history and valid bit = 1
-            if((page_table[i].counter < min_cnt) && (page_table[i].frame>>15 & 1)) {
+            if((page_table[i].counter <= min_cnt) && (page_table[i].frame>>15 & 1)) {
                 min_cnt = page_table[i].counter;
                 min_index = i;
             }
@@ -202,9 +217,10 @@ public:
         if(NFF <= NFFMIN) {
             this->page_replacements++;
             page_details q = get_victim_page();
+            // update q's page table
             page_table[q.page_no].frame &= ((1<<14) - 1);
-            page_table[p].frame = (mmu->replace_page(this->pid, q, p, this->attempts)) | (1<<15);
-            page_table[p].counter = 0xffff;
+            // update p's page table
+            page_table[p].frame = (mmu->replace_page(this->pid, q, p, this->attempts));
 
             #ifdef VERBOSE
                 cout << "\tFault on Page " << setw(4) << p << ": To replace Page " << q.page_no << " at Frame " << q.frame_no << " [history = " << q.counter << "]" << endl;
@@ -219,17 +235,20 @@ public:
             #endif
         }
 
+        page_table[p].counter = 0xffff;
         return 0;
 
     }
     
-    int bin_search(int l, int r, int x, vector<int>& curr_search, int pid) {
+    int bin_search(int x, vector<int>& curr_search, int pid) {
         #ifdef VERBOSE
             cout << "+++ Process " << pid << ": Search " << curr_search[pid] + 1 << endl; 
         #endif  
         
+        int l = 0, r = array_size - 1;
+
         while(l<r) {
-            int mid = l + (r-l)/2;
+            int mid = (r+l)/2;
             total_page_accesses++;
             this->accesses++;
     
@@ -240,7 +259,6 @@ public:
     
             allocate_frame(mid);
 
-            page_table[10 + (mid>>10)].counter = 0xffff;
             page_table[10 + (mid>>10)].frame |= (3<<14); // set the reference and valid bit to 1
         }
 
@@ -261,7 +279,7 @@ public:
     }
 
     void remove_frames() {
-        for(int i=ESSENTIAL_FRAMES; i<MAX_PROCESS_PAGES; i++) {
+        for(int i=0; i<MAX_PROCESS_PAGES; i++) {
             if(page_table[i].frame>>15 & 1) {
                 page_table[i].frame &= ((1<<15) - 1);
                 mmu->add_frame_back(page_table[i].frame);
@@ -280,9 +298,7 @@ void simulate_page_replacement(process* processes, int num_processes, vector<vec
         int search_index = search_indices[pid][curr_search[pid]];
         int array_size = process_array_size[pid];
 
-        if(processes[pid].bin_search(0, array_size-1, search_index, curr_search, pid) < 0) {
-            continue;
-        }
+        processes[pid].bin_search(search_index, curr_search, pid);
 
         if(curr_search[pid] == num_searches) {
             processes[pid].remove_frames();
@@ -333,13 +349,14 @@ int main() {
             << fixed << setprecision(2) << (processes[i].attempts[3] * 100.0 / processes[i].page_replacements) << "%)" 
             << endl;
         
-        total_page_accesses += processes[i].accesses;
         total_replacements += processes[i].page_replacements;
         total_attempts[0] += processes[i].attempts[0];
         total_attempts[1] += processes[i].attempts[1];
         total_attempts[2] += processes[i].attempts[2];
         total_attempts[3] += processes[i].attempts[3];
     }
+
+    cout << endl;
 
     cout << "\tTotal" << setw(13) << total_page_accesses 
         << setw(7) << total_page_faults << " (" << fixed << setprecision(2) 
