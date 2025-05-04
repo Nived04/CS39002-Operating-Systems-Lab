@@ -43,7 +43,7 @@ void list_files(char dir_name[], char ext[]) {
             char *dot = strrchr(reader->d_name, '.');
             if(dot && strcmp(dot + 1, ext) == 0) {
                 struct stat file_stat;
-                char file_path[512];
+                char file_path[5000];
                 sprintf(file_path, "%s/%s", dir_name, reader->d_name);
                 if(stat(file_path, &file_stat) == -1) {
                     perror("stat");
@@ -56,14 +56,14 @@ void list_files(char dir_name[], char ext[]) {
         }
         else if(reader->d_type == DT_DIR) {
             if(strcmp(reader->d_name, ".") != 0 && strcmp(reader->d_name, "..") != 0) {
-                char new_dir[257];
+                char new_dir[5000];
                 sprintf(new_dir, "%s/%s", dir_name, reader->d_name);
                 list_files(new_dir, ext);
             }
         }
     }
 
-    closedir (pDir);
+    closedir(pDir);
 }
 
 int main (int argc, char *argv[]) {
@@ -77,12 +77,6 @@ int main (int argc, char *argv[]) {
         return 1;
     }
 
-    pDir = opendir(argv[1]);
-    if (pDir == NULL) {
-        printf ("Cannot open directory '%s'\n", argv[1]);
-        return 1;
-    }
-
     char *extension = argv[2];
 
     printf("%-8s: %-16s %-16s %s\n", "NO", "OWNER", "SIZE", "NAME");
@@ -92,6 +86,5 @@ int main (int argc, char *argv[]) {
 
     printf("+++ %d files match the extension %s\n", file_count, extension);
 
-    closedir (pDir);
     return 0;
 }
