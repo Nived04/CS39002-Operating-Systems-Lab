@@ -1,5 +1,4 @@
-void newboard ( int A[9][9], int S[9][9] )
-{
+void newboard ( int A[9][9], int S[9][9] ) {
    int P[10] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }, *Q, i, j, k, r, s, t;
 
    int B[9][9] = { {1, 0, 0, 0, 0, 8, 0, 0, 9},
