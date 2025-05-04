@@ -2,8 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-int main ( int argc, char *argv[] )
-{
+int main ( int argc, char *argv[] ) {
    int m, n, *TOTAL, *MAX, *ALLOC, i, j, k, nr, rt, req;
    FILE *fp;
    char fname[64];
