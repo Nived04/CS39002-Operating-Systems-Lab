@@ -4,8 +4,7 @@
 
 #define N_DEFAULT 10
 
-void bsort ( int *A, int n )
-{
+void bsort ( int *A, int n ) {
    int i, j, t;
 
    if (n <= 1) return;
@@ -20,8 +19,7 @@ void bsort ( int *A, int n )
    }
 }
 
-int main ( int argc, char *argv[] )
-{
+int main ( int argc, char *argv[] ) {
    int n, *P, *R, **A, *B, i, j, k, t;
    FILE *fp;
 
