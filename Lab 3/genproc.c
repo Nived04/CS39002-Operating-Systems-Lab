@@ -2,8 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-void genschedule ( int n )
-{
+void genschedule ( int n ) {
    int i, j, b, IOmin = 50, CPUmin, CPUmax, IOmod = 151, CPUmod;
    int A = 0;
    FILE *fp;
@@ -30,8 +29,7 @@ void genschedule ( int n )
    fclose(fp);
 }
 
-int main ( int argc, char *argv[] )
-{
+int main ( int argc, char *argv[] ) {
    int n;
 
    srand((unsigned int)time(NULL));
